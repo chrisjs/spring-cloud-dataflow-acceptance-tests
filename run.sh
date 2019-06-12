@@ -95,11 +95,14 @@ function download_skipper(){
   fi
 }
 
-function run_scripts()
-{
-  pushd $1
-   . $2
-  popd
+function run_scripts() {
+  if [ -d "$1" ] && [ -f "$1/$2" ]; then
+    pushd $1 > /dev/null
+    . $2
+    popd > /dev/null
+  else
+    echo "Requested script to run does not exist: $PWD/$1/$2"
+  fi
 }
 
 function setup() {
@@ -232,7 +235,21 @@ function run_tests() {
   if [  -z "$skipCloudConfig" ]; then
     skipCloudConfig="false"
   fi
-  eval "./mvnw -B -Dspring.profiles.active=blah -Dtest=$TESTS -DPLATFORM_TYPE=$PLATFORM -DSKIP_CLOUD_CONFIG=$skipCloudConfig test surefire-report:report"
+
+  MVN_STATUS=0
+
+  eval "./mvnw -B -Dspring.profiles.active=blah -Dtest=$TESTS -DPLATFORM_TYPE=$PLATFORM -DSKIP_CLOUD_CONFIG=$skipCloudConfig test surefire-report:report" || MVN_STATUS=1
+
+  if [ "$PLATFORM" == "gke" ]; then
+    if [ "$MVN_STATUS" == 0 ]; then
+      echo "Test success, killing GKE cluster"
+      run_scripts ${PLATFORM}/destroy destroy.sh
+    else
+      echo "Tests failed, leaving GKE cluster for inspection"
+	fi
+  fi
+
+  exit "$MVN_STATUS"
 }
 
 # ======================================= FUNCTIONS END =======================================
